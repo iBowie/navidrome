@@ -1,0 +1,64 @@
+# BowPlayer fork: builds the Docker image from the `bow` branch (upstream's Dockerfile, unchanged) and pushes it to GHCR as
+#   ghcr.io/<owner>/navidrome:bow                  the latest build (what the Portainer stack runs)
+#   ghcr.io/<owner>/navidrome:<upstream tag>-bow.<n> a pinned build to roll back to (n = commits on top of the upstream tag)
+# Set the repository secret PORTAINER_WEBHOOK to the stack's webhook URL to redeploy it after each push.
+name: BowPlayer image
+
+on:
+  push:
+    branches: [bow]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: bow-image
+  cancel-in-progress: true
+
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Names
+        id: names
+        run: |
+          base=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
+          echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/navidrome" >> "$GITHUB_OUTPUT"
+          echo "pinned=${base}-bow.$(git rev-list --count "$base"..HEAD)" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.names.outputs.image }}:bow
+            ${{ steps.names.outputs.image }}:${{ steps.names.outputs.pinned }}
+          build-args: |
+            GIT_SHA=${{ steps.names.outputs.sha }}
+            GIT_TAG=${{ steps.names.outputs.base }}-bow
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Redeploy the Portainer stack
+        env:
+          PORTAINER_WEBHOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        if: env.PORTAINER_WEBHOOK != ''
+        run: curl -fsS -X POST "$PORTAINER_WEBHOOK"

@@ -1,0 +1,20 @@
+# Portainer stack for the BowPlayer Navidrome fork. A drop-in for a stock Navidrome stack: keep your own ports,
+# volumes and ND_* settings, only the image changes. Going back to stock is changing the image back
+# (BowPlayer then just shows covers instead of canvases).
+#
+# Canvases live next to the music, so the existing read-only music mount is all they need:
+#   <song file name without extension>.canvas.mp4   the song's canvas
+#   canvas.mp4                                        every song in that folder (album or disc) without its own
+# Navidrome's scanner ignores them; GET /rest/getCanvas?id=<song id> serves them.
+services:
+  navidrome:
+    image: ghcr.io/ibowie/navidrome:bow   # or a pinned :<upstream tag>-bow.<n>
+    restart: unless-stopped
+    user: 1000:1000
+    ports:
+      - "4533:4533"
+    environment:
+      ND_LOGLEVEL: info
+    volumes:
+      - /path/to/navidrome/data:/data
+      - /path/to/music:/music:ro
