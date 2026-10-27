@@ -186,6 +186,7 @@ func (api *Router) routes() http.Handler {
 			h(r, "getLyricsBySongId", api.GetLyricsBySongId)
 			hr(r, "stream", api.Stream)
 			hr(r, "download", api.Download)
+			hr(r, "getCanvas", api.GetCanvas)
 			hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
 			hr(r, "getTranscodeStream", api.GetTranscodeStream)
 		})
