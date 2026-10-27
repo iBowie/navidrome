@@ -28,6 +28,8 @@ jobs:
       - name: Names
         id: names
         run: |
+          # The fork holds no tags (pushing one would start upstream's release pipeline here), so take them from upstream.
+          git fetch --quiet --no-tags https://github.com/navidrome/navidrome.git 'refs/tags/v*:refs/tags/v*'
           base=$(git describe --tags --abbrev=0 --match 'v*' HEAD)
           echo "image=ghcr.io/${GITHUB_REPOSITORY_OWNER,,}/navidrome" >> "$GITHUB_OUTPUT"
           echo "pinned=${base}-bow.$(git rev-list --count "$base"..HEAD)" >> "$GITHUB_OUTPUT"
