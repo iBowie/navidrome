@@ -54,6 +54,7 @@ type Router struct {
 	lyrics            lyricssvc.Lyrics
 	transcodeDecision stream.TranscodeDecider
 	sonic             *sonicsvc.Sonic
+	connect           *connectHub
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,
@@ -79,6 +80,7 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		lyrics:            lyrics,
 		transcodeDecision: transcodeDecision,
 		sonic:             sonic,
+		connect:           newConnectHub(),
 	}
 	r.Handler = r.routes()
 	return r
@@ -189,6 +191,11 @@ func (api *Router) routes() http.Handler {
 			hr(r, "getCanvas", api.GetCanvas)
 			hr(r, "getTranscodeDecision", api.GetTranscodeDecision)
 			hr(r, "getTranscodeStream", api.GetTranscodeStream)
+		})
+		r.Group(func(r chi.Router) {
+			hr(r, "connect", api.Connect)
+			h(r, "connectState", api.ConnectState)
+			h(r, "connectCommand", api.ConnectCommand)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(server.ThrottleBacklog(conf.Server.DevArtworkMaxRequests, conf.Server.DevArtworkThrottleBacklogLimit,
