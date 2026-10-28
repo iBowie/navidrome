@@ -62,9 +62,11 @@ func (c *connectConn) send(name string, data []byte) {
 }
 
 type connectUser struct {
-	conns  map[string]*connectConn
-	active string
-	last   []byte // data of the last "state" event
+	conns      map[string]*connectConn
+	active     string
+	last       []byte // data of the complete "state" event devices get on connecting
+	lastDevice string
+	lastQueue  json.RawMessage
 }
 
 type connectHub struct {
@@ -136,17 +138,18 @@ func (h *connectHub) sendDevices(u *connectUser) {
 }
 
 // publish takes a device's state. The active device's state is kept and sent on; another device's becomes active
-// when it plays or when none is active, and is ignored otherwise.
-func (h *connectHub) publish(userID, device string, state []byte) error {
-	var fields struct {
-		Playing bool `json:"playing"`
-	}
+// when it plays, when none is active or when it claims, and is ignored otherwise. A state without "queue" keeps the
+// queue its device posted last; devices already online get it as posted, devices coming online get it complete.
+func (h *connectHub) publish(userID, device string, state []byte, claim bool) error {
+	var fields map[string]json.RawMessage
 	if err := unmarshalObject(state, &fields); err != nil {
 		return newError(responses.ErrorGeneric, "invalid state: %s", err.Error())
 	}
-	var compact bytes.Buffer
-	if err := json.Compact(&compact, state); err != nil {
-		return newError(responses.ErrorGeneric, "invalid state: %s", err.Error())
+	var playing bool
+	if raw, ok := fields["playing"]; ok {
+		if err := json.Unmarshal(raw, &playing); err != nil {
+			return newError(responses.ErrorGeneric, "invalid state: playing: %s", err.Error())
+		}
 	}
 
 	h.mu.Lock()
@@ -156,21 +159,31 @@ func (h *connectHub) publish(userID, device string, state []byte) error {
 		return errDeviceOffline
 	}
 	c := u.conns[device]
-	if u.active != device {
-		if !fields.Playing && u.active != "" {
-			return nil
+	if u.active != device && !playing && !claim && u.active != "" {
+		return nil
+	}
+	queue, hasQueue := fields["queue"]
+	if !hasQueue {
+		if u.lastDevice != device || u.lastQueue == nil {
+			return newError(responses.ErrorMissingParameter, "queue required")
 		}
+		queue = u.lastQueue
+	}
+	if u.active != device {
 		if old := u.conns[u.active]; old != nil {
 			old.send("command", mustJSON(map[string]any{"cmd": "pause", "reason": "taken", "from": ""}))
 		}
 		u.active = device
 		h.sendDevices(u)
 	}
-	u.last = mustJSON(map[string]any{"device": device, "name": c.name, "at": h.now().UnixMilli(),
-		"state": json.RawMessage(compact.Bytes())})
+	at := h.now().UnixMilli()
+	posted := mustJSON(map[string]any{"device": device, "name": c.name, "at": at, "state": fields})
+	fields["queue"] = queue
+	u.last = mustJSON(map[string]any{"device": device, "name": c.name, "at": at, "state": fields})
+	u.lastDevice, u.lastQueue = device, queue
 	for _, other := range u.conns {
 		if other != c {
-			other.send("state", u.last)
+			other.send("state", posted)
 		}
 	}
 	return nil
@@ -315,7 +328,8 @@ func (api *Router) ConnectState(r *http.Request) (*responses.Subsonic, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := api.connect.publish(connectUserID(r), device, body); err != nil {
+	claim := req.Params(r).BoolOr("claim", false)
+	if err := api.connect.publish(connectUserID(r), device, body, claim); err != nil {
 		return nil, err
 	}
 	return newResponse(), nil

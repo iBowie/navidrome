@@ -29,7 +29,7 @@ Any Subsonic client keeps working; ones that don't know the extension never see 
 A user's players keep an event stream open and the server relays between them: which devices are online, the state of the one that plays, and commands sent to it. Signing in works like any Subsonic call, so a player only sees the same account's devices. Nothing is stored: the active device and its last state live in memory until the server restarts. The protocol is `protocol/connect.md` in the BowPlayer repo.
 
 - `GET /rest/connect?device=<id>&name=<name>&platform=<desktop|android>`: a `text/event-stream` of `hello`, `devices`, `state`, `command` and `ping` events, open while the device is online.
-- `POST /rest/connectState?device=<id>` with a JSON body: the device's state. A playing device becomes the active one, and the one it replaces gets a `pause` command.
+- `POST /rest/connectState?device=<id>[&claim=true]` with a JSON body: the device's state (the queue only when it changed; the server keeps the last one). A playing or claiming device becomes the active one, and the one it replaces gets a `pause` command.
 - `POST /rest/connectCommand?device=<id>&target=<id>` with a JSON body (`{"cmd": …}`): a command for another device; error 70 when it's offline.
 - `getOpenSubsonicExtensions` lists **`bowConnect`** (version 1).
 

@@ -92,7 +92,7 @@ var _ = Describe("Connect", func() {
 			pc := hub.subscribe("u1", "pc", "Desk PC", "desktop")
 			drain(pc)
 			other := hub.subscribe("u2", "phone", "Their phone", "android")
-			Expect(hub.publish("u2", "phone", playing)).To(Succeed())
+			Expect(hub.publish("u2", "phone", playing, false)).To(Succeed())
 
 			Expect(pc.events).To(BeEmpty())
 			Expect(errCode(hub.command("u2", "phone", "pc", []byte(`{"cmd":"pause"}`)))).To(Equal(responses.ErrorDataNotFound))
@@ -107,7 +107,7 @@ var _ = Describe("Connect", func() {
 			hub.unsubscribe("u1", old)
 			_, data := last(newer)
 			Expect(data["devices"]).To(HaveLen(1))
-			Expect(hub.publish("u1", "pc", playing)).To(Succeed())
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
 		})
 
 		It("closes a stream that falls too far behind", func() {
@@ -132,7 +132,7 @@ var _ = Describe("Connect", func() {
 		})
 
 		It("makes the playing device active and sends its state to the others", func() {
-			Expect(hub.publish("u1", "pc", playing)).To(Succeed())
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
 
 			name, data := next(phone)
 			Expect(name).To(Equal("devices"))
@@ -149,10 +149,10 @@ var _ = Describe("Connect", func() {
 		})
 
 		It("pauses the old device when another starts playing", func() {
-			Expect(hub.publish("u1", "pc", playing)).To(Succeed())
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
 			drain(pc, phone)
 
-			Expect(hub.publish("u1", "phone", playing)).To(Succeed())
+			Expect(hub.publish("u1", "phone", playing, false)).To(Succeed())
 
 			name, data := next(pc)
 			Expect(name).To(Equal("command"))
@@ -166,24 +166,24 @@ var _ = Describe("Connect", func() {
 		})
 
 		It("ignores a paused state from an idle device while another is active", func() {
-			Expect(hub.publish("u1", "pc", playing)).To(Succeed())
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
 			drain(pc, phone)
 
-			Expect(hub.publish("u1", "phone", paused)).To(Succeed())
+			Expect(hub.publish("u1", "phone", paused, false)).To(Succeed())
 
 			Expect(pc.events).To(BeEmpty())
 			Expect(hub.users["u1"].active).To(Equal("pc"))
 		})
 
 		It("lets a paused device become active when none is", func() {
-			Expect(hub.publish("u1", "phone", paused)).To(Succeed())
+			Expect(hub.publish("u1", "phone", paused, false)).To(Succeed())
 
 			_, data := next(pc)
 			Expect(data["active"]).To(Equal("phone"))
 		})
 
 		It("keeps the last state for devices coming online, after its device left", func() {
-			Expect(hub.publish("u1", "pc", playing)).To(Succeed())
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
 			hub.unsubscribe("u1", pc)
 			_, data := last(phone)
 			Expect(data["active"]).To(Equal(""))
@@ -197,13 +197,49 @@ var _ = Describe("Connect", func() {
 			Expect(data["state"]).To(HaveKeyWithValue("playing", true))
 		})
 
+		It("keeps the queue a device posted last when it posts without one", func() {
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
+			drain(phone)
+
+			Expect(hub.publish("u1", "pc", []byte(`{"current":1,"position":40,"playing":false}`), false)).To(Succeed())
+
+			_, data := next(phone)
+			Expect(data["state"]).ToNot(HaveKey("queue"), "devices online get the state as posted")
+			Expect(data["state"]).To(HaveKeyWithValue("position", 40.0))
+			tablet := hub.subscribe("u1", "tablet", "Tab", "android")
+			_, data = last(tablet)
+			Expect(data["state"]).To(HaveKeyWithValue("queue", HaveLen(1)), "a device coming online gets it complete")
+			Expect(data["state"]).To(HaveKeyWithValue("position", 40.0))
+		})
+
+		It("asks for the queue when it has none from that device", func() {
+			noQueue := []byte(`{"current":null,"position":0,"playing":true}`)
+			Expect(errCode(hub.publish("u1", "pc", noQueue, false))).To(Equal(responses.ErrorMissingParameter))
+
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
+			Expect(errCode(hub.publish("u1", "phone", noQueue, false))).To(Equal(responses.ErrorMissingParameter))
+			Expect(hub.users["u1"].active).To(Equal("pc"), "a refused takeover changes nothing")
+		})
+
+		It("lets a paused device claim the active place", func() {
+			Expect(hub.publish("u1", "pc", playing, false)).To(Succeed())
+			drain(pc, phone)
+
+			Expect(hub.publish("u1", "phone", paused, true)).To(Succeed())
+
+			name, data := next(pc)
+			Expect(name).To(Equal("command"))
+			Expect(data["reason"]).To(Equal("taken"))
+			Expect(hub.users["u1"].active).To(Equal("phone"))
+		})
+
 		It("refuses a device without a stream", func() {
-			Expect(errCode(hub.publish("u1", "tablet", playing))).To(Equal(responses.ErrorDataNotFound))
+			Expect(errCode(hub.publish("u1", "tablet", playing, false))).To(Equal(responses.ErrorDataNotFound))
 		})
 
 		It("refuses anything but a JSON object", func() {
 			for _, body := range []string{``, `null`, `[]`, `"x"`, `{"playing":"yes"}`, `{"playing":true`} {
-				Expect(errCode(hub.publish("u1", "pc", []byte(body)))).To(Equal(responses.ErrorGeneric), body)
+				Expect(errCode(hub.publish("u1", "pc", []byte(body), false))).To(Equal(responses.ErrorGeneric), body)
 			}
 		})
 	})
@@ -305,7 +341,7 @@ var _ = Describe("Connect", func() {
 
 			phone := router.connect.subscribe("u1", "phone", "Galaxy", "android")
 			readEvent(events) // devices, now with the phone
-			Expect(router.connect.publish("u1", "phone", playing)).To(Succeed())
+			Expect(router.connect.publish("u1", "phone", playing, false)).To(Succeed())
 			_, data = readEvent(events)
 			Expect(data).To(ContainSubstring(`"active":"phone"`))
 			name, data = readEvent(events)
