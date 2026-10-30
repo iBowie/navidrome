@@ -328,6 +328,18 @@ var _ = Describe("Connect", func() {
 			return withUser(r)
 		}
 
+		It("takes a browser as a device and refuses a platform it doesn't know", func() {
+			res, events := open("device=tab&name=Firefox+(web)&platform=web")
+			Expect(res.Header.Get("Content-Type")).To(Equal("text/event-stream"))
+			readEvent(events) // hello
+			_, data := readEvent(events)
+			Expect(data).To(ContainSubstring(`"platform":"web"`))
+			cancel() // open() keeps only the last cancel for cleanup, so end this stream before opening another
+
+			res2, _ := open("device=toaster&platform=toaster")
+			Expect(res2.Header.Get("Content-Type")).ToNot(Equal("text/event-stream"))
+		})
+
 		It("streams events and publishes state over HTTP", func() {
 			res, events := open("device=pc&name=Desk+PC&platform=desktop")
 			Expect(res.StatusCode).To(Equal(http.StatusOK))

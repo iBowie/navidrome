@@ -266,7 +266,7 @@ func (api *Router) Connect(w http.ResponseWriter, r *http.Request) (*responses.S
 		return nil, newError(responses.ErrorGeneric, "name too long")
 	}
 	platform := p.StringOr("platform", "desktop")
-	if platform != "desktop" && platform != "android" {
+	if platform != "desktop" && platform != "android" && platform != "web" {
 		return nil, newError(responses.ErrorGeneric, "invalid platform")
 	}
 
