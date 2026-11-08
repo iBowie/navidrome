@@ -139,7 +139,8 @@ func (h *roomHub) create(typ roomType) (string, error) {
 			return "", err
 		}
 	}
-	h.rooms[code] = &room{code: code, typ: typ, members: map[string]*roomMember{}, createdAt: h.now()}
+	h.rooms[code] = &room{code: code, typ: typ, members: map[string]*roomMember{}, createdAt: h.now(),
+		suggestions: []roomSuggestion{}}
 	return code, nil
 }
 
