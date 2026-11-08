@@ -18,6 +18,8 @@ func (api *Router) GetOpenSubsonicExtensions(_ *http.Request) (*responses.Subson
 		{Name: "topSongsByArtistId", Versions: []int32{1}},
 		{Name: "bowCanvas", Versions: []int32{1}},
 		{Name: "bowConnect", Versions: []int32{1}},
+		{Name: "bowProfile", Versions: []int32{1}},
+		{Name: "bowRoom", Versions: []int32{1}},
 	}
 	if api.sonic != nil && api.sonic.HasProvider() {
 		extensions = append(extensions, responses.OpenSubsonicExtension{

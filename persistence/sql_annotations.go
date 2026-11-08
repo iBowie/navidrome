@@ -1,6 +1,7 @@
 package persistence
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -19,6 +20,23 @@ import (
 )
 
 const annotationTable = "annotation"
+
+// annotationUserKey carries an override for the annotation user: reads then join the annotation of
+// that user instead of the logged-in one, while library filtering still follows the logged-in user.
+// Used by the bowProfile endpoints to show one user's stars with the caller's library visibility.
+type annotationUserKey struct{}
+
+// WithAnnotationUser returns a ctx whose repositories read the given user's annotations.
+func WithAnnotationUser(ctx context.Context, userID string) context.Context {
+	return context.WithValue(ctx, annotationUserKey{}, userID)
+}
+
+func annotationUserID(ctx context.Context) string {
+	if id, ok := ctx.Value(annotationUserKey{}).(string); ok && id != "" {
+		return id
+	}
+	return loggedUser(ctx).ID
+}
 
 // annotationColumns are the columns withAnnotation's LEFT JOIN contributes, derived from
 // model.Annotations so the set tracks schema changes. average_rating is excluded: it lives on the
@@ -60,7 +78,7 @@ func filtersNeedAnnotation(query SelectBuilder) bool {
 }
 
 func (r sqlRepository) withAnnotation(query SelectBuilder, idField string) SelectBuilder {
-	userID := loggedUser(r.ctx).ID
+	userID := annotationUserID(r.ctx)
 	if userID == invalidUserId {
 		return query.Columns(fmt.Sprintf("%s.average_rating", r.tableName))
 	}

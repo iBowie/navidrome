@@ -55,6 +55,7 @@ type Router struct {
 	transcodeDecision stream.TranscodeDecider
 	sonic             *sonicsvc.Sonic
 	connect           *connectHub
+	rooms             *roomHub
 }
 
 func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStreamer, archiver core.Archiver,
@@ -81,6 +82,7 @@ func New(ds model.DataStore, artwork artwork.Artwork, streamer stream.MediaStrea
 		transcodeDecision: transcodeDecision,
 		sonic:             sonic,
 		connect:           newConnectHub(),
+		rooms:             newRoomHub(),
 	}
 	r.Handler = r.routes()
 	return r
@@ -196,6 +198,22 @@ func (api *Router) routes() http.Handler {
 			hr(r, "connect", api.Connect)
 			h(r, "connectState", api.ConnectState)
 			h(r, "connectCommand", api.ConnectCommand)
+		})
+		r.Group(func(r chi.Router) {
+			hr(r, "roomCreate", api.RoomCreate)
+			hr(r, "roomJoin", api.RoomJoin)
+			h(r, "roomLeave", api.RoomLeave)
+			h(r, "roomState", api.RoomState)
+			h(r, "roomPos", api.RoomPos)
+			h(r, "roomCommand", api.RoomCommand)
+			hr(r, "roomSuggest", api.RoomSuggest)
+			h(r, "roomSuggestAct", api.RoomSuggestAct)
+		})
+		r.Group(func(r chi.Router) {
+			hr(r, "searchUsers", api.SearchUsers)
+			hr(r, "getUserProfile", api.GetUserProfile)
+			hr(r, "getUserPlaylists", api.GetUserPlaylists)
+			hr(r, "getUserStarred", api.GetUserStarred)
 		})
 		r.Group(func(r chi.Router) {
 			r.Use(server.ThrottleBacklog(conf.Server.DevArtworkMaxRequests, conf.Server.DevArtworkThrottleBacklogLimit,

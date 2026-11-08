@@ -55,7 +55,7 @@ var _ = Describe("GetOpenSubsonicExtensions", func() {
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(*response.Subsonic.OpenSubsonicExtensions).To(SatisfyAll(
-				HaveLen(9),
+				HaveLen(11),
 				ContainElement(responses.OpenSubsonicExtension{Name: "transcodeOffset", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "formPost", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "songLyrics", Versions: []int32{1, 2}}),
@@ -65,6 +65,8 @@ var _ = Describe("GetOpenSubsonicExtensions", func() {
 				ContainElement(responses.OpenSubsonicExtension{Name: "topSongsByArtistId", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "bowCanvas", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "bowConnect", Versions: []int32{1}}),
+				ContainElement(responses.OpenSubsonicExtension{Name: "bowProfile", Versions: []int32{1}}),
+				ContainElement(responses.OpenSubsonicExtension{Name: "bowRoom", Versions: []int32{1}}),
 			))
 			Expect(*response.Subsonic.OpenSubsonicExtensions).NotTo(
 				ContainElement(responses.OpenSubsonicExtension{Name: "sonicSimilarity", Versions: []int32{1}}),
@@ -88,7 +90,7 @@ var _ = Describe("GetOpenSubsonicExtensions", func() {
 			err := json.Unmarshal(w.Body.Bytes(), &response)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(*response.Subsonic.OpenSubsonicExtensions).To(SatisfyAll(
-				HaveLen(10),
+				HaveLen(12),
 				ContainElement(responses.OpenSubsonicExtension{Name: "transcodeOffset", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "formPost", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "songLyrics", Versions: []int32{1, 2}}),
@@ -99,6 +101,8 @@ var _ = Describe("GetOpenSubsonicExtensions", func() {
 				ContainElement(responses.OpenSubsonicExtension{Name: "topSongsByArtistId", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "bowCanvas", Versions: []int32{1}}),
 				ContainElement(responses.OpenSubsonicExtension{Name: "bowConnect", Versions: []int32{1}}),
+				ContainElement(responses.OpenSubsonicExtension{Name: "bowProfile", Versions: []int32{1}}),
+				ContainElement(responses.OpenSubsonicExtension{Name: "bowRoom", Versions: []int32{1}}),
 			))
 		})
 	})
