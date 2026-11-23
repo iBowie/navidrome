@@ -74,6 +74,7 @@ func (api *Router) SearchUsers(w http.ResponseWriter, r *http.Request) (*respons
 		Name      string `json:"name"`
 		UserName  string `json:"userName"`
 		AvatarURL string `json:"avatarUrl,omitempty"`
+		HasAvatar bool   `json:"hasAvatar,omitempty"`
 	}
 	matches := make([]userEntry, 0, 10)
 	for _, u := range users {
@@ -81,7 +82,7 @@ func (api *Router) SearchUsers(w http.ResponseWriter, r *http.Request) (*respons
 			!strings.Contains(strings.ToLower(u.Name), query) {
 			continue
 		}
-		matches = append(matches, userEntry{u.ID, profileName(&u), u.UserName, profileAvatar(&u)})
+		matches = append(matches, userEntry{u.ID, profileName(&u), u.UserName, profileAvatar(&u), hasAvatar(u.ID)})
 		if len(matches) == 10 {
 			break
 		}
@@ -97,6 +98,7 @@ func (api *Router) GetUserProfile(w http.ResponseWriter, r *http.Request) (*resp
 	}
 	return writeProfileJSON(w, r, map[string]any{
 		"id": u.ID, "name": profileName(u), "userName": u.UserName, "avatarUrl": profileAvatar(u),
+		"hasAvatar": hasAvatar(u.ID),
 	})
 }
 

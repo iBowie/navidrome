@@ -210,6 +210,21 @@ func (api *Router) routes() http.Handler {
 			h(r, "roomSuggestAct", api.RoomSuggestAct)
 		})
 		r.Group(func(r chi.Router) {
+			hr(r, "saveAvatar", api.SaveAvatar)
+			hr(r, "deleteAvatar", api.DeleteAvatar)
+		})
+		r.Group(func(r chi.Router) {
+			hr(r, "getTypes", api.GetTypes)
+			hr(r.With(adminOnly), "saveTypes", api.SaveTypes)
+			hr(r, "getSongLinks", api.GetSongLinks)
+			hr(r.With(adminOnly), "saveSongLinks", api.SaveSongLinks)
+		})
+		r.Group(func(r chi.Router) {
+			hr(r, "listLocalization", api.ListLocalization)
+			hr(r.With(adminOnly), "getLocalization", api.GetLocalization)
+			hr(r.With(adminOnly), "saveLocalization", api.SaveLocalization)
+		})
+		r.Group(func(r chi.Router) {
 			hr(r, "searchUsers", api.SearchUsers)
 			hr(r, "getUserProfile", api.GetUserProfile)
 			hr(r, "getUserPlaylists", api.GetUserPlaylists)
@@ -376,6 +391,10 @@ func sendResponseWithStatus(w http.ResponseWriter, r *http.Request, payload *res
 		w.Header().Set("Content-Type", "application/json")
 		wrapper := &responses.JsonWrapper{Subsonic: *payload}
 		response, err = json.Marshal(wrapper)
+		// bowLocale: a client that sends lang= gets titles/artists rewritten in its language.
+		if lang, _ := p.String("lang"); validLang(lang) {
+			response = localizeJSON(response, lang)
+		}
 	case "jsonp":
 		callback, _ := p.String("callback")
 		if !validJSIdentifier.MatchString(callback) {
