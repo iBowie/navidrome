@@ -8,7 +8,7 @@ import (
 	_ "image/gif"  // avatar formats
 	_ "image/jpeg" //
 	_ "image/png"  //
-	_ "image/webp" //
+	_ "golang.org/x/image/webp"
 	"io"
 	"net/http"
 	"os"
@@ -16,8 +16,8 @@ import (
 
 	"github.com/navidrome/navidrome/conf"
 	"github.com/navidrome/navidrome/log"
+	"github.com/navidrome/navidrome/model/request"
 	"github.com/navidrome/navidrome/server/subsonic/responses"
-	"github.com/navidrome/navidrome/utils/request"
 )
 
 // bowAvatar: a user's own avatar picture, uploaded and replaced by the user (any signed-in user may
