@@ -4,11 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	_ "golang.org/x/image/webp"
 	"image"
 	_ "image/gif"  // avatar formats
 	_ "image/jpeg" //
 	_ "image/png"  //
-	_ "golang.org/x/image/webp"
 	"io"
 	"net/http"
 	"os"

@@ -261,10 +261,10 @@ func (api *Router) SaveLocalization(w http.ResponseWriter, r *http.Request) (*re
 		return nil, newError(responses.ErrorGeneric, "reading body: "+err.Error())
 	}
 	var doc struct {
-		Lang   string            `json:"lang"`
-		Kind   string            `json:"kind"`
-		ID     string            `json:"id"`
-		Values localizedFields   `json:"values"`
+		Lang   string          `json:"lang"`
+		Kind   string          `json:"kind"`
+		ID     string          `json:"id"`
+		Values localizedFields `json:"values"`
 	}
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, newError(responses.ErrorGeneric, "body must be {lang, kind, id, values}: "+err.Error())

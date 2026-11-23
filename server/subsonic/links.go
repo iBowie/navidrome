@@ -74,7 +74,7 @@ type linksView struct {
 }
 
 type linksStore struct {
-	mu  sync.Mutex
+	mu    sync.Mutex
 	view_ *linksView
 }
 
