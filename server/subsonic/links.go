@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -223,6 +224,12 @@ func (api *Router) SaveSongLinks(w http.ResponseWriter, r *http.Request) (*respo
 	return nil, nil
 }
 
+// sameLink compares two links field by field (songLink contains a slice, so == doesn't compile).
+func sameLink(x, l songLink) bool {
+	return x.A == l.A && x.B == l.B && x.Kind == l.Kind && x.Label == l.Label &&
+		x.Merge == l.Merge && slices.Equal(x.Context, l.Context)
+}
+
 func removeLinkFrom(otherID, aboutID string, l songLink) error {
 	// Only remove the exact link (same relation, same direction).
 	var doc struct {
@@ -236,7 +243,7 @@ func removeLinkFrom(otherID, aboutID string, l songLink) error {
 	var next []songLink
 	changed := false
 	for _, x := range doc.Links {
-		if x == l {
+		if sameLink(x, l) {
 			changed = true
 			continue
 		}
