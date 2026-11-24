@@ -12,6 +12,7 @@ import { makeStyles } from '@material-ui/core/styles'
 import MoreVertIcon from '@material-ui/icons/MoreVert'
 import { MdQuestionMark } from 'react-icons/md'
 import clsx from 'clsx'
+import { openLibraryDataDialog } from '../actions'
 import {
   playNext,
   addTracks,
@@ -142,6 +143,28 @@ export const SongContextMenu = ({
       label: `${translate('ra.action.download')} (${formatBytes(record.size)})`,
       action: (record) =>
         dispatch(openDownloadMenu(record, DOWNLOAD_MENU_SONG)),
+    },
+    linkSong: {
+      enabled: permissions === 'admin',
+      label: 'Link with another song…',
+      action: (record) =>
+        dispatch(
+          openLibraryDataDialog('link', {
+            source: { id: record.mediaFileId || record.id, title: record.title },
+          }),
+        ),
+    },
+    localizeSong: {
+      enabled: permissions === 'admin',
+      label: 'Edit localization…',
+      action: (record) =>
+        dispatch(
+          openLibraryDataDialog('localization', {
+            id: record.mediaFileId || record.id,
+            entityKind: 'songs',
+            name: record.title,
+          }),
+        ),
     },
     info: {
       enabled: true,

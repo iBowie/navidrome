@@ -38,6 +38,7 @@ import {
   replayGainReducer,
   downloadMenuDialogReducer,
   shareDialogReducer,
+  libraryDataDialogReducer,
   transcodingReducer,
 } from './reducers'
 import createAdminStore from './store/createAdminStore'
@@ -76,6 +77,7 @@ const adminStore = createAdminStore({
     listenBrainzTokenDialog: listenBrainzTokenDialogReducer,
     saveQueueDialog: saveQueueDialogReducer,
     shareDialog: shareDialogReducer,
+    libraryDataDialog: libraryDataDialogReducer,
     activity: activityReducer,
     settings: settingsReducer,
     replayGain: replayGainReducer,

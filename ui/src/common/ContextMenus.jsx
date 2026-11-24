@@ -27,6 +27,7 @@ import {
   openShareMenu,
 } from '../actions'
 import { LoveButton } from './LoveButton'
+import { openLibraryDataDialog } from '../actions'
 import config from '../config'
 import { formatBytes } from '../utils'
 import { artistDownloadSize } from './artist'
@@ -137,6 +138,65 @@ const ContextMenu = ({
         )
       },
     },
+    ...(permissions === 'admin' && resource === 'album'
+      ? {
+          editType: {
+            enabled: true,
+            needData: false,
+            label: 'Edit type…',
+            action: (record) =>
+              dispatch(
+                openLibraryDataDialog('type', {
+                  id: record.id,
+                  kind: 'album',
+                  name: record.name,
+                }),
+              ),
+          },
+          linkSongs: {
+            enabled: true,
+            needData: false,
+            label: 'Link songs (scoped to this album)…',
+            action: (record) =>
+              dispatch(
+                openLibraryDataDialog('link', {
+                  source: null,
+                  scope: { id: record.id, kind: 'album', name: record.name },
+                }),
+              ),
+          },
+          localizeAlbum: {
+            enabled: true,
+            needData: false,
+            label: 'Edit localization…',
+            action: (record) =>
+              dispatch(
+                openLibraryDataDialog('localization', {
+                  id: record.id,
+                  entityKind: 'albums',
+                  name: record.name,
+                }),
+              ),
+          },
+        }
+      : {}),
+    ...(permissions === 'admin' && resource === 'artist'
+      ? {
+          localizeArtist: {
+            enabled: true,
+            needData: false,
+            label: 'Edit localization…',
+            action: (record) =>
+              dispatch(
+                openLibraryDataDialog('localization', {
+                  id: record.id,
+                  entityKind: 'artists',
+                  name: record.name,
+                }),
+              ),
+          },
+        }
+      : {}),
     refresh: {
       enabled: permissions === 'admin',
       needData: false,

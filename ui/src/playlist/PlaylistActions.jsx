@@ -30,6 +30,8 @@ import PropTypes from 'prop-types'
 import { formatBytes } from '../utils'
 import config from '../config'
 import { ToggleFieldsMenu } from '../common'
+import { openLibraryDataDialog } from '../actions'
+import { usePermissions } from 'react-admin'
 
 const useStyles = makeStyles({
   toolbar: { display: 'flex', justifyContent: 'space-between', width: '100%' },
@@ -41,6 +43,7 @@ const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
   const classes = useStyles()
   const dataProvider = useDataProvider()
   const notify = useNotify()
+  const { permissions } = usePermissions()
   const isDesktop = useMediaQuery((theme) => theme.breakpoints.up('md'))
   const isNotSmall = useMediaQuery((theme) => theme.breakpoints.up('sm'))
 
@@ -162,7 +165,51 @@ const PlaylistActions = ({ className, ids, data, record, ...rest }) => {
             <QueueMusicIcon />
           </Button>
         </div>
-        <div>{isNotSmall && <ToggleFieldsMenu resource="playlistTrack" />}</div>
+        <div>
+          {isNotSmall && <ToggleFieldsMenu resource="playlistTrack" />}
+          {permissions === 'admin' && (
+            <>
+              <Button
+                onClick={() =>
+                  dispatch(
+                    openLibraryDataDialog('type', {
+                      id: record.id,
+                      kind: 'playlist',
+                      name: record.name,
+                    }),
+                  )
+                }
+              >
+                {'Edit type'}
+              </Button>
+              <Button
+                onClick={() =>
+                  dispatch(
+                    openLibraryDataDialog('link', {
+                      source: null,
+                      scope: { id: record.id, kind: 'playlist', name: record.name },
+                    }),
+                  )
+                }
+              >
+                {'Link songs'}
+              </Button>
+              <Button
+                onClick={() =>
+                  dispatch(
+                    openLibraryDataDialog('localization', {
+                      id: record.id,
+                      entityKind: 'playlists',
+                      name: record.name,
+                    }),
+                  )
+                }
+              >
+                {'Edit localization'}
+              </Button>
+            </>
+          )}
+        </div>
       </div>
     </TopToolbar>
   )

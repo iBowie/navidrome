@@ -18,6 +18,8 @@ import {
   TextField,
 } from '@material-ui/core'
 import httpClient from '../dataProvider/httpClient'
+import { EntityPicker } from './EntityPicker'
+import { KIND_NAME_FIELD } from './fields'
 
 const useStyles = makeStyles((theme) => ({
   root: { margin: '1em' },
@@ -34,67 +36,8 @@ const KIND_FIELDS = {
   artists: ['name'],
 }
 const KIND_RESOURCE = { songs: 'song', albums: 'album', artists: 'artist' }
-const KIND_NAME_FIELD = { song: 'title', album: 'name', artist: 'name', playlist: 'name' }
-const KIND_SORT = { song: { field: 'title', order: 'ASC' }, album: { field: 'name', order: 'ASC' }, artist: { field: 'name', order: 'ASC' }, playlist: { field: 'name', order: 'ASC' } }
 const TYPE_SUGGESTIONS = ['compilation', 'soundtrack', 'single', 'ep', 'live', 'remix', 'bootleg']
 const LINK_KINDS = ['version', 'alternate', 'counterpart']
-
-/** A search-as-you-type picker over a react-admin resource; onPick receives the entity. */
-const EntityPicker = ({ resource, label, value, onPick, excludeId }) => {
-  const [search, setSearch] = useState(value ? (value[KIND_NAME_FIELD[resource]] ?? '') : '')
-  const [open, setOpen] = useState(false)
-  const { ids, data } = useGetList(resource, {
-    pagination: { page: 1, perPage: 500 },
-    sort: KIND_SORT[resource],
-  })
-  useEffect(() => {
-    setSearch(value ? (value[KIND_NAME_FIELD[resource]] ?? '') : '')
-  }, [value, resource])
-  const matches = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return (ids || [])
-      .map((id) => data[id])
-      .filter((e) => e && e.id !== excludeId)
-      .filter((e) => !q || (e[KIND_NAME_FIELD[resource]] || '').toLowerCase().includes(q))
-      .slice(0, 8)
-  }, [ids, data, search, resource, excludeId])
-  return (
-    <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
-      <TextField
-        fullWidth
-        label={label}
-        value={search}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        onChange={(e) => {
-          setSearch(e.target.value)
-          setOpen(true)
-          onPick(null)
-        }}
-      />
-      {open && matches.length > 0 && (
-        <Paper style={{ position: 'absolute', zIndex: 10, width: '100%', maxHeight: 260, overflow: 'auto' }}>
-          <List dense>
-            {matches.map((e) => (
-              <ListItem
-                button
-                key={e.id}
-                onMouseDown={(ev) => {
-                  ev.preventDefault()
-                  onPick(e)
-                  setOpen(false)
-                }}
-              >
-                <ListItemText primary={e[KIND_NAME_FIELD[resource]] || e.id} secondary={e.artist || e.album || e.id} />
-              </ListItem>
-            ))}
-          </List>
-        </Paper>
-      )}
-    </div>
-  )
-}
-
 const Section = ({ title, children }) => {
   const classes = useStyles()
   return (

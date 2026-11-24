@@ -86,3 +86,17 @@ export const openSaveQueueDialog = () => ({
 export const closeSaveQueueDialog = () => ({
   type: SAVE_QUEUE_CLOSE,
 })
+
+export const LIBRARY_DATA_OPEN = 'LIBRARY_DATA_OPEN'
+export const LIBRARY_DATA_CLOSE = 'LIBRARY_DATA_CLOSE'
+
+/** Open a library-data dialog: view is 'link', 'localization' or 'type'. */
+export const openLibraryDataDialog = (view, payload) => ({
+  type: LIBRARY_DATA_OPEN,
+  view,
+  payload,
+})
+
+export const closeLibraryDataDialog = () => ({
+  type: LIBRARY_DATA_CLOSE,
+})

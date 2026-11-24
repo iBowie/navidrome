@@ -1,5 +1,7 @@
 import {
   ADD_TO_PLAYLIST_CLOSE,
+  LIBRARY_DATA_CLOSE,
+  LIBRARY_DATA_OPEN,
   ADD_TO_PLAYLIST_OPEN,
   DOWNLOAD_MENU_ALBUM,
   DOWNLOAD_MENU_ARTIST,
@@ -181,6 +183,26 @@ export const saveQueueDialogReducer = (
     case SAVE_QUEUE_OPEN:
       return { ...previousState, open: true }
     case SAVE_QUEUE_CLOSE:
+      return { ...previousState, open: false }
+    default:
+      return previousState
+  }
+}
+
+export const libraryDataDialogReducer = (
+  previousState = { open: false, view: undefined, payload: undefined },
+  payload,
+) => {
+  const { type } = payload
+  switch (type) {
+    case LIBRARY_DATA_OPEN:
+      return {
+        ...previousState,
+        open: true,
+        view: payload.view,
+        payload: payload.payload,
+      }
+    case LIBRARY_DATA_CLOSE:
       return { ...previousState, open: false }
     default:
       return previousState
