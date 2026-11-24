@@ -118,6 +118,24 @@ func (s *linksStore) drop() {
 
 // ── Endpoints.
 
+// ReadSongLinks answers the links for each requested song id. Ids without a file answer nil.
+func ReadSongLinks(ids []string) map[string][]SongLink {
+	view := songLinksStore.load()
+	out := map[string][]SongLink{}
+	for _, id := range ids {
+		if !validID(id) {
+			continue
+		}
+		if l, ok := view.byID[id]; ok {
+			out[id] = l
+		}
+	}
+	return out
+}
+
+// SongLink is the exported shape of one link (bowLinks).
+type SongLink = songLink
+
 // GetSongLinks answers the links for each requested song id: {"links": {id: […]}}.
 func (api *Router) GetSongLinks(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
 	ids := r.URL.Query()["ids"]
@@ -129,22 +147,80 @@ func (api *Router) GetSongLinks(w http.ResponseWriter, r *http.Request) (*respon
 	if len(ids) > 500 {
 		return nil, newError(responses.ErrorGeneric, "at most 500 ids per call")
 	}
-	view := songLinksStore.load()
-	answer := map[string]any{"links": map[string][]songLink{}}
-	links := answer["links"].(map[string][]songLink)
-	for _, id := range ids {
-		if !validID(id) {
-			continue
-		}
-		if l, ok := view.byID[id]; ok {
-			links[id] = l
-		}
-	}
-	return writeProfileJSON(w, r, answer)
+	w.Header().Set("Cache-Control", "private, max-age=60")
+	return writeProfileJSON(w, r, map[string]any{"links": ReadSongLinks(ids)})
 }
 
-// SaveSongLinks (admin) replaces one song's link list ({id, links}) and mirrors every change to
-// the other end's file, so either side of a relation finds it.
+// WriteSongLinks replaces one song's link list and mirrors every change to the other ends' files,
+// so either side of a relation finds it.
+func WriteSongLinks(songID string, links []songLink) error {
+	if !validID(songID) {
+		return errors.New("invalid id")
+	}
+	for _, l := range links {
+		if !validID(l.A) || !validID(l.B) || l.Kind == "" {
+			return errors.New("every link needs valid a, b and kind")
+		}
+	}
+
+	// What the other ends' files currently say about this song (old state).
+	view := songLinksStore.load()
+	oldList := view.byID[songID]
+
+	// Remove from other ends every old link that is gone from the new list.
+	gone := map[string]songLink{}
+	for _, l := range oldList {
+		gone[linksKey(l)] = l
+	}
+	newKeys := map[string]bool{}
+	for _, l := range links {
+		newKeys[linksKey(l)] = true
+	}
+	for key, l := range gone {
+		if !newKeys[key] {
+			other := l.A
+			if other == songID {
+				other = l.B
+			}
+			if err := removeLinkFrom(other, songID, l); err != nil {
+				return err
+			}
+		}
+	}
+
+	if len(links) == 0 {
+		if err := os.Remove(linksFile(songID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+	} else {
+		out, err := json.Marshal(map[string]any{"links": links})
+		if err != nil {
+			return err
+		}
+		if err := writeJSONAtomic(linksFile(songID), out); err != nil {
+			return err
+		}
+	}
+
+	// Upsert this song's new links into the other ends' files.
+	for _, l := range links {
+		other := l.A
+		if other == songID {
+			other = l.B
+		}
+		if other == songID {
+			continue // a self-link lives only in the one file
+		}
+		if err := upsertLink(other, songID, l); err != nil {
+			return err
+		}
+	}
+
+	songLinksStore.drop()
+	return nil
+}
+
+// SaveSongLinks (admin) replaces one song's link list ({id, links}) via WriteSongLinks.
 func (api *Router) SaveSongLinks(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 2<<20))
 	if err != nil {
@@ -157,69 +233,9 @@ func (api *Router) SaveSongLinks(w http.ResponseWriter, r *http.Request) (*respo
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, newError(responses.ErrorGeneric, "body must be {id, links}: "+err.Error())
 	}
-	if !validID(doc.ID) {
-		return nil, newError(responses.ErrorGeneric, "id is required")
+	if err := WriteSongLinks(doc.ID, doc.Links); err != nil {
+		return nil, newError(responses.ErrorGeneric, err.Error())
 	}
-	for _, l := range doc.Links {
-		if !validID(l.A) || !validID(l.B) || l.Kind == "" {
-			return nil, newError(responses.ErrorGeneric, "every link needs valid a, b and kind")
-		}
-	}
-
-	// What the other ends' files currently say about this song (old state) and should say (new).
-	view := songLinksStore.load()
-	oldList := view.byID[doc.ID]
-
-	// Remove from other ends every old link that is gone from the new list.
-	gone := map[string]songLink{}
-	for _, l := range oldList {
-		gone[linksKey(l)] = l
-	}
-	newKeys := map[string]bool{}
-	for _, l := range doc.Links {
-		newKeys[linksKey(l)] = true
-	}
-	for key, l := range gone {
-		if !newKeys[key] {
-			other := l.A
-			if other == doc.ID {
-				other = l.B
-			}
-			if err := removeLinkFrom(other, doc.ID, l); err != nil {
-				return nil, err
-			}
-		}
-	}
-
-	if len(doc.Links) == 0 {
-		if err := os.Remove(linksFile(doc.ID)); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-	} else {
-		out, err := json.Marshal(map[string]any{"links": doc.Links})
-		if err != nil {
-			return nil, err
-		}
-		if err := writeJSONAtomic(linksFile(doc.ID), out); err != nil {
-			return nil, err
-		}
-	}
-
-	// Upsert this song's new links into the other ends' files.
-	for _, l := range doc.Links {
-		other := l.A
-		if other == doc.ID {
-			other = l.B
-		}
-		if other == doc.ID {
-			continue // a self-link lives only in the one file
-		}
-		if err := upsertLink(other, doc.ID, l); err != nil {
-			return nil, err
-		}
-	}
-
-	songLinksStore.drop()
 	log.Info(r, "Song links saved", "id", doc.ID, "links", len(doc.Links))
 	return nil, nil
 }

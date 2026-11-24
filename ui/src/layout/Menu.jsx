@@ -139,6 +139,16 @@ const Menu = ({ dense = false }) => {
       ) : (
         resources.filter(subItems('playlist')).map(renderResourceMenuItemLink)
       )}
+      {localStorage.getItem('role') === 'admin' && (
+        <MenuItemLink
+          to="/librarydata"
+          activeClassName={classes.active}
+          primaryText={'Library data'}
+          leftIcon={<ViewListIcon />}
+          sidebarIsOpen={open}
+          dense={dense}
+        />
+      )}
     </div>
   )
 }

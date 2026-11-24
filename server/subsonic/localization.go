@@ -227,6 +227,61 @@ func (api *Router) ListLocalization(w http.ResponseWriter, r *http.Request) (*re
 	return writeProfileJSON(w, r, answer)
 }
 
+// ReadLocalization answers one entity's overrides (empty map when it has none).
+func ReadLocalization(lang, kind, id string) (map[string]string, error) {
+	if !validLang(lang) || !entityKinds[kind] || !validID(id) {
+		return nil, errors.New("lang, kind (songs|albums|artists) and id are required")
+	}
+	fields := localizedFields{}
+	if data, err := os.ReadFile(filepath.Join(localizationEntityDir(lang, kind), id+".json")); err == nil {
+		_ = json.Unmarshal(data, &fields)
+	}
+	return fields, nil
+}
+
+// WriteLocalization upserts one entity's overrides for a language. Fields absent from values keep
+// their current value; a field set to "" is removed; an empty values map deletes the file.
+func WriteLocalization(lang, kind, id string, values map[string]string) error {
+	if !validLang(lang) || !entityKinds[kind] || !validID(id) {
+		return errors.New("lang, kind (songs|albums|artists) and id are required")
+	}
+	path := filepath.Join(localizationEntityDir(lang, kind), id+".json")
+	if len(values) == 0 {
+		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
+			return err
+		}
+		localization.drop(lang)
+		return nil
+	}
+	current := localizedFields{}
+	if old, err := os.ReadFile(path); err == nil {
+		_ = json.Unmarshal(old, &current)
+	}
+	for k, v := range values {
+		if v == "" {
+			delete(current, k)
+		} else {
+			current[k] = v
+		}
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return err
+	}
+	if len(current) == 0 {
+		_ = os.Remove(path)
+	} else {
+		out, err := json.Marshal(current)
+		if err != nil {
+			return err
+		}
+		if err := os.WriteFile(path, out, 0600); err != nil {
+			return err
+		}
+	}
+	localization.drop(lang)
+	return nil
+}
+
 // GetLocalization (admin) reads one entity's overrides: ?lang=&kind=&id= → {"values": {…}}.
 func (api *Router) GetLocalization(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
 	p := req.Params(r)
@@ -242,19 +297,15 @@ func (api *Router) GetLocalization(w http.ResponseWriter, r *http.Request) (*res
 	if err != nil {
 		return nil, err
 	}
-	if !validLang(lang) || !entityKinds[kind] || !validID(id) {
-		return nil, newError(responses.ErrorGeneric, "lang, kind (songs|albums|artists) and id are required")
-	}
-	fields := localizedFields{}
-	if data, err := os.ReadFile(filepath.Join(localizationEntityDir(lang, kind), id+".json")); err == nil {
-		_ = json.Unmarshal(data, &fields)
+	fields, err := ReadLocalization(lang, kind, id)
+	if err != nil {
+		return nil, newError(responses.ErrorGeneric, err.Error())
 	}
 	return writeProfileJSON(w, r, map[string]any{"values": fields})
 }
 
 // SaveLocalization (admin) upserts one entity's overrides for a language: {lang, kind, id, values}.
-// Fields absent from values keep their current value; values {} deletes the file. Unknown fields
-// are rejected so typos don't silently do nothing.
+// Unknown fields are rejected so typos don't silently do nothing.
 func (api *Router) SaveLocalization(w http.ResponseWriter, r *http.Request) (*responses.Subsonic, error) {
 	data, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
 	if err != nil {
@@ -269,50 +320,15 @@ func (api *Router) SaveLocalization(w http.ResponseWriter, r *http.Request) (*re
 	if err := json.Unmarshal(data, &doc); err != nil {
 		return nil, newError(responses.ErrorGeneric, "body must be {lang, kind, id, values}: "+err.Error())
 	}
-	if !validLang(doc.Lang) || !entityKinds[doc.Kind] || doc.ID == "" || strings.ContainsAny(doc.ID, `/\`) {
-		return nil, newError(responses.ErrorGeneric, "lang, kind (songs|albums|artists) and id are required")
-	}
 	allowed := map[string]bool{"title": true, "name": true, "artist": true, "lyrics": true}
 	for k := range doc.Values {
 		if !allowed[k] {
 			return nil, newError(responses.ErrorGeneric, "unknown field: "+k)
 		}
 	}
-
-	path := filepath.Join(localizationEntityDir(doc.Lang, doc.Kind), doc.ID+".json")
-	if len(doc.Values) == 0 {
-		if err := os.Remove(path); err != nil && !errors.Is(err, fs.ErrNotExist) {
-			return nil, err
-		}
-		localization.drop(doc.Lang)
-		return nil, nil
+	if err := WriteLocalization(doc.Lang, doc.Kind, doc.ID, doc.Values); err != nil {
+		return nil, newError(responses.ErrorGeneric, err.Error())
 	}
-	current := localizedFields{}
-	if old, err := os.ReadFile(path); err == nil {
-		_ = json.Unmarshal(old, &current)
-	}
-	for k, v := range doc.Values {
-		if v == "" {
-			delete(current, k)
-		} else {
-			current[k] = v
-		}
-	}
-	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-		return nil, err
-	}
-	if len(current) == 0 {
-		_ = os.Remove(path)
-	} else {
-		out, err := json.Marshal(current)
-		if err != nil {
-			return nil, err
-		}
-		if err := os.WriteFile(path, out, 0600); err != nil {
-			return nil, err
-		}
-	}
-	localization.drop(doc.Lang)
 	log.Info(r, "Localization saved", "lang", doc.Lang, "kind", doc.Kind, "id", doc.ID)
 	return nil, nil
 }

@@ -53,6 +53,7 @@ type roomMember struct {
 	name      string
 	platform  string
 	joinedAt  time.Time
+	seq       int
 	events    chan connectEvent
 	done      chan struct{}
 	closeOnce sync.Once
@@ -86,6 +87,7 @@ type room struct {
 	lastFrom    string
 	suggestions []roomSuggestion
 	nextSuggest int
+	joinSeq     int // handed to each member on join: the host tie-breaks on it, not the clock
 }
 
 type roomHub struct {
@@ -171,8 +173,9 @@ func (h *roomHub) join(code, userID, userName, device, name, platform string) (*
 	if r.members[key] == nil && len(r.members) >= roomMaxMembers {
 		return nil, nil, errRoomFull
 	}
+	r.joinSeq++
 	m := &roomMember{key: key, userID: userID, userName: userName, device: device, name: name,
-		platform: platform, joinedAt: h.now(),
+		platform: platform, joinedAt: h.now(), seq: r.joinSeq,
 		events: make(chan connectEvent, connectBuffer), done: make(chan struct{})}
 	if old := r.members[key]; old != nil {
 		old.close()
@@ -218,7 +221,9 @@ func (h *roomHub) leave(r *room, m *roomMember) {
 	if r.host == m.key {
 		var next *roomMember
 		for _, o := range r.members {
-			if next == nil || o.joinedAt.Before(next.joinedAt) {
+			// Same joinedAt (coarse clock, or a mocked one in tests): the earlier join wins.
+			if next == nil || o.joinedAt.Before(next.joinedAt) ||
+				(o.joinedAt.Equal(next.joinedAt) && o.seq < next.seq) {
 				next = o
 			}
 		}
