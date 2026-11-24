@@ -1,13 +1,20 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Title } from 'react-admin'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
+import { Title, useGetList } from 'react-admin'
 import {
   Button,
   Card,
   CardContent,
   CardHeader,
+  Checkbox,
+  Chip,
   Divider,
+  FormControlLabel,
+  List,
+  ListItem,
+  ListItemText,
   makeStyles,
   MenuItem,
+  Paper,
   TextField,
 } from '@material-ui/core'
 import httpClient from '../dataProvider/httpClient'
@@ -15,190 +22,303 @@ import httpClient from '../dataProvider/httpClient'
 const useStyles = makeStyles((theme) => ({
   root: { margin: '1em' },
   section: { marginBottom: theme.spacing(2) },
-  fields: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing(2), marginTop: theme.spacing(1) },
-  field: { minWidth: 200, flex: 1 },
+  row: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing(2), marginTop: theme.spacing(1), alignItems: 'flex-end' },
+  field: { minWidth: 220, flex: 1 },
   message: { marginTop: theme.spacing(1) },
+  chips: { display: 'flex', flexWrap: 'wrap', gap: theme.spacing(1), marginTop: theme.spacing(1) },
 }))
 
-const KINDS = [
-  { value: 'songs', fields: ['title', 'artist', 'lyrics'] },
-  { value: 'albums', fields: ['name', 'artist'] },
-  { value: 'artists', fields: ['name'] },
-]
+const KIND_FIELDS = {
+  songs: ['title', 'artist', 'lyrics'],
+  albums: ['name', 'artist'],
+  artists: ['name'],
+}
+const KIND_RESOURCE = { songs: 'song', albums: 'album', artists: 'artist' }
+const KIND_NAME_FIELD = { song: 'title', album: 'name', artist: 'name', playlist: 'name' }
+const KIND_SORT = { song: { field: 'title', order: 'ASC' }, album: { field: 'name', order: 'ASC' }, artist: { field: 'name', order: 'ASC' }, playlist: { field: 'name', order: 'ASC' } }
+const TYPE_SUGGESTIONS = ['compilation', 'soundtrack', 'single', 'ep', 'live', 'remix', 'bootleg']
+const LINK_KINDS = ['version', 'alternate', 'counterpart']
 
-const Section = ({ title, children }) => (
-  <Card className={useStyles().section}>
-    <CardHeader title={title} />
-    <CardContent>{children}</CardContent>
-  </Card>
-)
+/** A search-as-you-type picker over a react-admin resource; onPick receives the entity. */
+const EntityPicker = ({ resource, label, value, onPick, excludeId }) => {
+  const [search, setSearch] = useState(value ? (value[KIND_NAME_FIELD[resource]] ?? '') : '')
+  const [open, setOpen] = useState(false)
+  const { ids, data } = useGetList(resource, {
+    pagination: { page: 1, perPage: 500 },
+    sort: KIND_SORT[resource],
+  })
+  useEffect(() => {
+    setSearch(value ? (value[KIND_NAME_FIELD[resource]] ?? '') : '')
+  }, [value, resource])
+  const matches = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    return (ids || [])
+      .map((id) => data[id])
+      .filter((e) => e && e.id !== excludeId)
+      .filter((e) => !q || (e[KIND_NAME_FIELD[resource]] || '').toLowerCase().includes(q))
+      .slice(0, 8)
+  }, [ids, data, search, resource, excludeId])
+  return (
+    <div style={{ position: 'relative', flex: 1, minWidth: 220 }}>
+      <TextField
+        fullWidth
+        label={label}
+        value={search}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        onChange={(e) => {
+          setSearch(e.target.value)
+          setOpen(true)
+          onPick(null)
+        }}
+      />
+      {open && matches.length > 0 && (
+        <Paper style={{ position: 'absolute', zIndex: 10, width: '100%', maxHeight: 260, overflow: 'auto' }}>
+          <List dense>
+            {matches.map((e) => (
+              <ListItem
+                button
+                key={e.id}
+                onMouseDown={(ev) => {
+                  ev.preventDefault()
+                  onPick(e)
+                  setOpen(false)
+                }}
+              >
+                <ListItemText primary={e[KIND_NAME_FIELD[resource]] || e.id} secondary={e.artist || e.album || e.id} />
+              </ListItem>
+            ))}
+          </List>
+        </Paper>
+      )}
+    </div>
+  )
+}
+
+const Section = ({ title, children }) => {
+  const classes = useStyles()
+  return (
+    <Card className={classes.section}>
+      <CardHeader title={title} />
+      <CardContent>{children}</CardContent>
+    </Card>
+  )
+}
 
 const LibraryData = () => {
   const classes = useStyles()
-  const [message, setMessage] = useState('')
+  const [notice, setNotice] = useState(null)
+  const notify = (text, isError) => setNotice({ text, isError })
 
-  const notify = (text, isError) =>
-    setMessage({ text, isError })
-
-  const get = useCallback(async (url) => {
-    const { json } = await httpClient(url)
-    return json
-  }, [])
-
+  const get = useCallback(async (url) => (await httpClient(url)).json, [])
   const put = useCallback(async (url, body) => {
     await httpClient(url, { method: 'PUT', body: JSON.stringify(body) })
   }, [])
 
-  // Types
-  const [typesText, setTypesText] = useState('')
-  const loadTypes = useCallback(async () => {
+  // ── Types: pick a playlist or album, give it a type.
+  const [typeKind, setTypeKind] = useState('album')
+  const [typeEntity, setTypeEntity] = useState(null)
+  const [typeValue, setTypeValue] = useState('')
+  const saveType = async () => {
+    if (!typeEntity) return
     try {
       const t = await get('/api/librarydata/types')
-      setTypesText(JSON.stringify(t, null, 2))
-      notify('')
+      const map = t[typeKind === 'album' ? 'albums' : 'playlists']
+      if (typeValue.trim()) map[typeEntity.id] = typeValue.trim()
+      else delete map[typeEntity.id]
+      await put('/api/librarydata/types', t)
+      notify(`Type ${typeValue.trim() ? 'set' : 'cleared'}`)
     } catch (e) {
-      notify('Could not load types: ' + e.message, true)
-    }
-  }, [get])
-  useEffect(() => void loadTypes(), [loadTypes])
-  const saveTypes = async () => {
-    try {
-      await put('/api/librarydata/types', JSON.parse(typesText || '{}'))
-      notify('Types saved')
-    } catch (e) {
-      notify('Could not save types: ' + e.message, true)
+      notify('Could not save the type: ' + e.message, true)
     }
   }
 
-  // Links
-  const [linkSongId, setLinkSongId] = useState('')
-  const [linksText, setLinksText] = useState('')
-  const loadLinks = async () => {
-    try {
-      const r = await get('/api/librarydata/links?ids=' + encodeURIComponent(linkSongId.trim()))
-      setLinksText(JSON.stringify(r.links[linkSongId.trim()] || [], null, 2))
-      notify('')
-    } catch (e) {
-      notify('Could not load links: ' + e.message, true)
-    }
+  // ── Links: pick the source song, manage its links.
+  const [source, setSource] = useState(null)
+  const [links, setLinks] = useState(null) // null = not loaded yet
+  const [target, setTarget] = useState(null)
+  const [linkKind, setLinkKind] = useState('version')
+  const [linkLabel, setLinkLabel] = useState('')
+  const [linkMerge, setLinkMerge] = useState(false)
+  const [context, setContext] = useState([]) // [{id, name, kind: 'playlist'|'album'}]
+  useEffect(() => {
+    setLinks(null)
+    setContext([])
+    if (!source) return
+    get('/api/librarydata/links?ids=' + encodeURIComponent(source.id))
+      .then((r) => setLinks(r.links[source.id] || []))
+      .catch((e) => notify('Could not load links: ' + e.message, true))
+  }, [source, get])
+  const addLink = () => {
+    if (!target) return
+    setLinks([
+      ...(links || []),
+      {
+        a: source.id,
+        b: target.id,
+        kind: linkKind,
+        label: linkLabel.trim() || undefined,
+        context: context.map((c) => c.id),
+        merge: linkMerge || undefined,
+      },
+    ])
+    setTarget(null)
+    setLinkLabel('')
+    setLinkMerge(false)
+    setContext([])
   }
   const saveLinks = async () => {
     try {
-      await put('/api/librarydata/links', { id: linkSongId.trim(), links: JSON.parse(linksText || '[]') })
+      await put('/api/librarydata/links', { id: source.id, links: links || [] })
       notify('Links saved')
     } catch (e) {
       notify('Could not save links: ' + e.message, true)
     }
   }
 
-  // Localization
-  const [lang, setLang] = useState('')
-  const [kind, setKind] = useState('songs')
-  const [entityId, setEntityId] = useState('')
+  // ── Localization: pick an entity and language, edit the fields.
+  const [locKind, setLocKind] = useState('songs')
+  const [locEntity, setLocEntity] = useState(null)
+  const [locLang, setLocLang] = useState('')
   const [values, setValues] = useState({})
   const loadLocalization = async () => {
     try {
       const r = await get(
-        `/api/librarydata/localization?lang=${encodeURIComponent(lang.trim())}&kind=${kind}&id=${encodeURIComponent(entityId.trim())}`
+        `/api/librarydata/localization?lang=${encodeURIComponent(locLang.trim())}&kind=${locKind}&id=${encodeURIComponent(locEntity.id)}`
       )
       setValues(r.values || {})
-      notify('')
     } catch (e) {
-      notify('Could not load localization: ' + e.message, true)
+      notify('Could not load: ' + e.message, true)
     }
   }
   const saveLocalization = async () => {
     try {
       await put('/api/librarydata/localization', {
-        lang: lang.trim(),
-        kind,
-        id: entityId.trim(),
+        lang: locLang.trim(),
+        kind: locKind,
+        id: locEntity.id,
         values: Object.fromEntries(Object.entries(values).filter(([, v]) => v !== '')),
       })
-      notify('Localization saved')
+      notify('Localized tags saved')
     } catch (e) {
-      notify('Could not save localization: ' + e.message, true)
+      notify('Could not save: ' + e.message, true)
     }
   }
 
-  const kindFields = KINDS.find((k) => k.value === kind).fields
-  const canEdit = lang.trim() !== '' && entityId.trim() !== ''
+  const canLoc = locEntity && locLang.trim() !== ''
 
   return (
     <div className={classes.root}>
       <Title title="Navidrome - Library data" />
       <Section title="Playlist and album types">
-        <TextField
-          multiline
-          rows={8}
-          fullWidth
-          variant="outlined"
-          value={typesText}
-          onChange={(e) => setTypesText(e.target.value)}
-          helperText='JSON: {"playlists": {"<id>": "soundtrack"}, "albums": {"<id>": "single"}}'
-        />
-        <Button variant="contained" color="primary" onClick={saveTypes} style={{ marginTop: 8 }}>
-          Save
-        </Button>
-        <Button onClick={loadTypes} style={{ marginTop: 8, marginLeft: 8 }}>
-          Reload
-        </Button>
-      </Section>
-      <Section title="Song links">
-        <div className={classes.fields}>
+        <div className={classes.row}>
+          <TextField select label="What" value={typeKind} onChange={(e) => { setTypeKind(e.target.value); setTypeEntity(null) }} style={{ minWidth: 140 }}>
+            <MenuItem value="album">Album</MenuItem>
+            <MenuItem value="playlist">Playlist</MenuItem>
+          </TextField>
+          <EntityPicker resource={typeKind} label={typeKind === 'album' ? 'Album' : 'Playlist'} value={typeEntity} onPick={setTypeEntity} />
           <TextField
             className={classes.field}
-            label="Song id"
-            value={linkSongId}
-            onChange={(e) => setLinkSongId(e.target.value)}
+            label="Type"
+            value={typeValue}
+            onChange={(e) => setTypeValue(e.target.value)}
+            helperText="empty clears the type"
+            inputProps={{ list: 'type-suggestions' }}
           />
+          <datalist id="type-suggestions">
+            {TYPE_SUGGESTIONS.map((t) => (
+              <option key={t} value={t} />
+            ))}
+          </datalist>
         </div>
-        {linksText !== '' && (
-          <TextField
-            multiline
-            rows={8}
-            fullWidth
-            variant="outlined"
-            style={{ marginTop: 8 }}
-            value={linksText}
-            onChange={(e) => setLinksText(e.target.value)}
-            helperText='JSON: [{"a": "<song id>", "b": "<song id>", "kind": "version|alternate|counterpart", "context": ["<playlist/album id>"], "merge": true}]'
-          />
-        )}
-        <Button disabled={!linkSongId.trim()} onClick={loadLinks} style={{ marginTop: 8 }}>
-          Load
-        </Button>
-        <Button
-          disabled={!linkSongId.trim()}
-          variant="contained"
-          color="primary"
-          onClick={saveLinks}
-          style={{ marginTop: 8, marginLeft: 8 }}
-        >
+        <Button variant="contained" color="primary" disabled={!typeEntity} onClick={saveType} style={{ marginTop: 8 }}>
           Save
         </Button>
       </Section>
+
+      <Section title="Song links">
+        <div className={classes.row}>
+          <EntityPicker resource="song" label="Song" value={source} onPick={setSource} />
+        </div>
+        {source && links !== null && (
+          <>
+            {links.length > 0 && (
+              <div className={classes.chips}>
+                {links.map((l, i) => (
+                  <Chip
+                    key={i}
+                    label={`→ ${l.b}${l.label ? ' · ' + l.label : ' · ' + l.kind}${l.context?.length ? ' · scoped' : ''}${l.merge ? ' · merged' : ''}`}
+                    onDelete={() => setLinks(links.filter((_, n) => n !== i))}
+                  />
+                ))}
+              </div>
+            )}
+            <Divider style={{ margin: '12px 0' }} />
+            <div className={classes.row}>
+              <EntityPicker resource="song" label="Link to song" value={target} onPick={setTarget} excludeId={source.id} />
+              <TextField select label="Kind" value={linkKind} onChange={(e) => setLinkKind(e.target.value)} style={{ minWidth: 140 }}>
+                {LINK_KINDS.map((k) => (
+                  <MenuItem key={k} value={k}>
+                    {k}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <TextField className={classes.field} label="Label (optional)" value={linkLabel} onChange={(e) => setLinkLabel(e.target.value)} />
+              <FormControlLabel control={<Checkbox checked={linkMerge} onChange={(e) => setLinkMerge(e.target.checked)} />} label="Merge into one line" />
+            </div>
+            <div className={classes.row}>
+              <EntityPicker
+                resource="playlist"
+                label="Only on playlist (optional)"
+                value={null}
+                onPick={(p) => p && !context.some((c) => c.id === p.id) && setContext([...context, { ...p, kind: 'playlist' }])}
+              />
+              <EntityPicker
+                resource="album"
+                label="Only on album (optional)"
+                value={null}
+                onPick={(a) => a && !context.some((c) => c.id === a.id) && setContext([...context, { ...a, kind: 'album' }])}
+              />
+            </div>
+            {context.length > 0 && (
+              <div className={classes.chips}>
+                {context.map((c) => (
+                  <Chip key={c.id} label={`${c.kind}: ${c.name}`} onDelete={() => setContext(context.filter((x) => x.id !== c.id))} />
+                ))}
+              </div>
+            )}
+            <Button disabled={!target} onClick={addLink} style={{ marginTop: 8 }}>
+              Add link
+            </Button>
+            <Button variant="contained" color="primary" disabled={links === null} onClick={saveLinks} style={{ marginTop: 8, marginLeft: 8 }}>
+              Save
+            </Button>
+          </>
+        )}
+      </Section>
+
       <Section title="Localized tags">
-        <div className={classes.fields}>
-          <TextField className={classes.field} label="Language (e.g. ja)" value={lang} onChange={(e) => setLang(e.target.value)} />
+        <div className={classes.row}>
           <TextField
-            className={classes.field}
             select
             label="What"
-            value={kind}
+            value={locKind}
             onChange={(e) => {
-              setKind(e.target.value)
+              setLocKind(e.target.value)
+              setLocEntity(null)
               setValues({})
             }}
+            style={{ minWidth: 140 }}
           >
-            {KINDS.map((k) => (
-              <MenuItem key={k.value} value={k.value}>
-                {k.value}
-              </MenuItem>
-            ))}
+            <MenuItem value="songs">Song</MenuItem>
+            <MenuItem value="albums">Album</MenuItem>
+            <MenuItem value="artists">Artist</MenuItem>
           </TextField>
-          <TextField className={classes.field} label="Id" value={entityId} onChange={(e) => setEntityId(e.target.value)} />
-          {kindFields.map((f) => (
+          <EntityPicker resource={KIND_RESOURCE[locKind]} label="Pick one" value={locEntity} onPick={setLocEntity} />
+          <TextField label="Language (e.g. ja)" value={locLang} onChange={(e) => setLocLang(e.target.value)} style={{ minWidth: 180 }} />
+        </div>
+        <div className={classes.row}>
+          {KIND_FIELDS[locKind].map((f) => (
             <TextField
               key={f}
               className={classes.field}
@@ -209,24 +329,19 @@ const LibraryData = () => {
             />
           ))}
         </div>
-        <Button disabled={!canEdit} onClick={loadLocalization} style={{ marginTop: 8 }}>
+        <Button disabled={!canLoc} onClick={loadLocalization} style={{ marginTop: 8 }}>
           Load
         </Button>
-        <Button
-          disabled={!canEdit}
-          variant="contained"
-          color="primary"
-          onClick={saveLocalization}
-          style={{ marginTop: 8, marginLeft: 8 }}
-        >
+        <Button disabled={!canLoc} variant="contained" color="primary" onClick={saveLocalization} style={{ marginTop: 8, marginLeft: 8 }}>
           Save
         </Button>
       </Section>
-      {message && (
+
+      {notice && (
         <>
           <Divider />
-          <p className={classes.message} style={{ color: message.isError ? 'red' : 'inherit' }}>
-            {message.text}
+          <p className={classes.message} style={{ color: notice.isError ? 'red' : 'inherit' }}>
+            {notice.text}
           </p>
         </>
       )}
